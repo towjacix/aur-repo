@@ -1,0 +1,160 @@
+name: Build Changed AUR Packages
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-changed-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  detect-and-build:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos
+    steps:
+      - name: Install base dependencies
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed git sudo rsync github-cli fakeroot binutils pacman-contrib paru curl
+          id builder >/dev/null 2>&1 || useradd -m builder
+          grep -q '^builder ALL=(ALL) NOPASSWD: ALL$' /etc/sudoers || echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Configure Git Global Safe Directory
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+
+      - name: Configure makepkg for x86-64-v3 optimization
+        run: |
+          set -euo pipefail
+          echo "Downloading CachyOS v3 makepkg.conf..."
+          curl -sLo /etc/makepkg.conf https://raw.githubusercontent.com/CachyOS/docker-makepkg/refs/heads/master/docker-makepkg-v3/makepkg.conf
+          echo "Downloading CachyOS v3 rust.conf..."
+          mkdir -p /etc/makepkg.conf.d
+          curl -sLo /etc/makepkg.conf.d/rust.conf https://raw.githubusercontent.com/CachyOS/docker-makepkg/refs/heads/master/docker-makepkg-v3/rust.conf
+          sed -i 's/^PKGDEST=/#PKGDEST=/g' /etc/makepkg.conf
+          sed -i 's/^LOGDEST=/#LOGDEST=/g' /etc/makepkg.conf
+          sed -i 's/^PACKAGECARCH=/#PACKAGECARCH=/g' /etc/makepkg.conf
+
+      - name: Configure pacman options and custom repository
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp)
+          awk '
+            BEGIN { inserted=0 }
+            /^\[options\]$/ && !inserted { print; print "DisableSandboxNetwork"; inserted=1; next }
+            { print }
+            END { if (!inserted) exit 1 }
+          ' /etc/pacman.conf > "$tmp"
+          cat "$tmp" > /etc/pacman.conf
+          rm -f "$tmp"
+
+          cat <<EOF >> /etc/pacman.conf
+
+          [nanoka]
+          SigLevel = Optional TrustAll
+          Server = https://github.com/nhktmdzhg/my-arch-repo/releases/download/repository
+          EOF
+          pacman -Sy
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed directories
+        id: changed-files
+        uses: tj-actions/changed-files@v47.0.6
+        with:
+          dir_names: 'true'
+          dir_names_max_depth: '1'
+          dir_names_exclude_current_dir: 'true'
+          files: |
+            */**
+            !.github/**
+
+      - name: Fix workspace ownership for build user
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Filter deleted or invalid packages
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          declare -A seen=()
+          changed_dirs=()
+
+          for dir in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            [[ -z "$dir" ]] && continue
+            [[ "$dir" == ".github" ]] && continue
+            
+            if [[ ! -d "$dir" ]]; then
+              echo "Package directory $dir was fully deleted. Skipping verification."
+              continue
+            fi
+            
+            if [[ ! -f "$dir/PKGBUILD" ]]; then
+              echo "Directory $dir exists but missing PKGBUILD. Skipping."
+              continue
+            fi
+            
+            if [[ -z "${seen[$dir]:-}" ]]; then
+              seen[$dir]=1
+              changed_dirs+=("$dir")
+            fi
+          done
+
+          if (( ${#changed_dirs[@]} == 0 )); then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "packages=" >> "$GITHUB_OUTPUT"
+            echo "### Build summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No valid packages to build or verify." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          printf 'packages=%s\n' "${changed_dirs[*]}" >> "$GITHUB_OUTPUT"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "### Changed packages" >> "$GITHUB_STEP_SUMMARY"
+          for pkg in "${changed_dirs[@]}"; do
+            echo "- $pkg" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Build changed packages with paru
+        if: steps.changed.outputs.has_changes == 'true'
+        shell: bash
+        run: |
+          set -uo pipefail
+          read -r -a packages <<< "${{ steps.changed.outputs.packages }}"
+          BUILT=()
+          FAILED=()
+
+          for dir in "${packages[@]}"; do
+            [[ -n "$dir" ]] || continue
+            echo "Building $dir with paru"
+            sudo -u builder bash -lc "cd '$GITHUB_WORKSPACE' && paru --noconfirm --skipreview --useask --removemake --nocheck -B '$GITHUB_WORKSPACE/$dir'" >/tmp/build-"$dir".log 2>&1 || true
+            
+            if ls "$GITHUB_WORKSPACE/$dir"/*.pkg.tar.zst >/dev/null 2>&1; then
+              BUILT+=("$dir")
+              echo "Build OK: $dir"
+            else
+              echo "Build failed for $dir"
+              tail -n 250 /tmp/build-"$dir".log || true
+              FAILED+=("$dir")
+            fi
+            sudo -u builder rm -rf "$GITHUB_WORKSPACE/$dir/src" "$GITHUB_WORKSPACE/$dir/pkg"
+            pacman -Sy --noconfirm >/dev/null 2>&1 || true
+          done
+
+          echo "### Build results" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Built OK: ${BUILT[*]:-none}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Failed: ${FAILED[*]:-none}" >> "$GITHUB_STEP_SUMMARY"
+
+          if (( ${#FAILED[@]} > 0 )); then
+            echo "Some packages failed to build in PR check."
+          fi
