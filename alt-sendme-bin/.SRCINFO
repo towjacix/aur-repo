@@ -1,0 +1,24 @@
+pkgbase = alt-sendme-bin
+	pkgdesc = Frictionless, real-time file transfer tool
+	pkgver = 0.5.0
+	pkgrel = 1
+	url = https://github.com/tonyantony300/alt-sendme
+	arch = x86_64
+	license = AGPL-3.0
+	makedepends = tar
+	depends = glibc
+	depends = glib2
+	depends = gcc-libs
+	depends = cairo
+	depends = hicolor-icon-theme
+	depends = webkit2gtk-4.1
+	depends = gdk-pixbuf2
+	depends = libsoup3
+	depends = gtk3
+	provides = alt-sendme
+	conflicts = alt-sendme
+	options = !strip
+	source_x86_64 = https://github.com/tonyantony300/alt-sendme/releases/download/v0.5.0/AltSendme_0.5.0_amd64.deb
+	sha256sums_x86_64 = 0cb61c300c9d4abcc905577a19c204cce2be7d1accf646d96a4f6d8f8e4cb4e7
+
+pkgname = alt-sendme-bin
