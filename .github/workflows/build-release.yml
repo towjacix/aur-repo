@@ -60,14 +60,6 @@ jobs:
           cat "$tmp" > /etc/pacman.conf
           rm -f "$tmp"
 
-          cat <<EOF >> /etc/pacman.conf
-
-          [towjacix]
-          SigLevel = Optional TrustAll
-          Server = https://github.com/towjacix/aur-repo/releases/download/repository
-          EOF
-          pacman -Sy || true
-
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
