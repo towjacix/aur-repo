@@ -66,7 +66,7 @@ jobs:
           SigLevel = Optional TrustAll
           Server = https://github.com/towjacix/aur-repo/releases/download/repository
           EOF
-          pacman -Sy
+          pacman -Sy || true
 
       - name: Checkout repository
         uses: actions/checkout@v7

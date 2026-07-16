@@ -56,11 +56,11 @@ jobs:
 
           cat <<EOF >> /etc/pacman.conf
 
-          [nanoka]
+          [towjacix]
           SigLevel = Optional TrustAll
-          Server = https://github.com/nhktmdzhg/my-arch-repo/releases/download/repository
+          Server = https://github.com/towjacix/aur-repo/releases/download/repository
           EOF
-          pacman -Sy
+          pacman -Sy || true
 
       - name: Checkout repository
         uses: actions/checkout@v7

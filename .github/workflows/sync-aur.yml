@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
-          token: ${{ secrets.MY_PAT_TOKEN }}
+          token: ${{ secrets.MY_PAT_TOKEN || github.token }}
 
       - name: Validate packages.txt exists
         run: |
@@ -98,7 +98,7 @@ jobs:
       - name: Create or update aggregated pull request
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.MY_PAT_TOKEN }}
+          token: ${{ secrets.MY_PAT_TOKEN || github.token }}
           commit-message: 'chore(aur-sync): sync package sources and prune deletions'
           branch: aur-sync
           delete-branch: true
