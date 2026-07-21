@@ -57,12 +57,20 @@ EOF
 
 post_upgrade() {
     echo ""
+    cat <<'EOF'
+ ▄▀▀▀  ▄▀▀▀  █     ▄▀▀▀█ ▄▀▀▀▄  ▄▀▀▀▄ ▄▀▀▀▀▀ ▄▀▀▀▄
+ █ ▀▀█  ▀▀▀▄ █     █▀▀▀█ █▀▀▀   █▀▀▀  █▀▀▀▀  █▀▀▀▄
+  ▀▀▀   ▀▀▀   ▀▀▀▀ ▀   ▀ ▀      ▀      ▀▀▀▀▀ ▀   ▀
+EOF
+    echo ""
     echo "==> gSlapper upgraded successfully!"
     echo ""
-    echo "New in 1.4.0: Image Cache System"
-    echo "  - Instant wallpaper switching via RAM cache (--cache-size MB)"
-    echo "  - IPC commands: cache-list, cache-stats, unload, listactive"
-    echo "  - LRU eviction when cache is full"
+    echo "New in 1.5.2: GIF wallpapers and signal-handling fixes"
+    echo "  - GIF wallpapers now decode correctly (previously failed with a missing-plugin error)"
+    echo "  - Animated GIFs play with correct frame timing and looping when gst-libav is installed"
+    echo "    (without gst-libav the first frame is shown as a static wallpaper)"
+    echo "  - SIGTERM is now delivered even when spawned by compositors that block signals"
+    echo "  - Shutdown on signal is crash-free (fixes a SEGV at greeter session teardown)"
     echo ""
     echo "Systemd service users:"
     echo "  - Restart service: systemctl --user restart gslapper.service"
